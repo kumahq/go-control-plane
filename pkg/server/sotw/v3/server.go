@@ -108,7 +108,7 @@ type watches struct {
 // Initialize all watches
 func (values *watches) Init() {
 	// muxed channel needs a buffer to release go-routines populating it
-	values.responses = make(chan cache.Response, 5)
+	values.responses = make(chan cache.Response, 1000) // kuma short-term fix: increase capacity to avoid a deadlock
 	values.cancellations = make(map[string]func())
 	values.nonces = make(map[string]string)
 }
