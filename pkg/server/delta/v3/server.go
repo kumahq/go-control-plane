@@ -58,11 +58,12 @@ type server struct {
 }
 
 // NewServer creates a delta xDS specific server which utilizes a ConfigWatcher and delta Callbacks.
-func NewServer(ctx context.Context, config cache.ConfigWatcher, callbacks Callbacks, opts ...config.XDSOption) Server {
+func NewServer(ctx context.Context, configWatcher cache.ConfigWatcher, callbacks Callbacks, opts ...config.XDSOption) Server {
 	s := &server{
-		cache:     config,
+		cache:     configWatcher,
 		callbacks: callbacks,
 		ctx:       ctx,
+		opts:      config.NewOpts(),
 	}
 
 	// Parse through our options
