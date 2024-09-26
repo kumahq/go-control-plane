@@ -37,6 +37,14 @@ type Callbacks interface {
 
 var deltaErrorResponse = &cache.RawDeltaResponse{}
 
+// WithDistinctResourceTypes overrides the default number of resource types, so that the server can serve Configs with
+// more distinct resource types without getting into a deadlock.
+func WithDistinctResourceTypes(n int) config.XDSOption {
+	return func(o *config.Opts) {
+		o.DistinctResourceTypes = n
+	}
+}
+
 type server struct {
 	cache     cache.ConfigWatcher
 	callbacks Callbacks
@@ -50,11 +58,12 @@ type server struct {
 }
 
 // NewServer creates a delta xDS specific server which utilizes a ConfigWatcher and delta Callbacks.
-func NewServer(ctx context.Context, config cache.ConfigWatcher, callbacks Callbacks, opts ...config.XDSOption) Server {
+func NewServer(ctx context.Context, configWatcher cache.ConfigWatcher, callbacks Callbacks, opts ...config.XDSOption) Server {
 	s := &server{
-		cache:     config,
+		cache:     configWatcher,
 		callbacks: callbacks,
 		ctx:       ctx,
+		opts:      config.NewOpts(),
 	}
 
 	// Parse through our options
@@ -72,7 +81,7 @@ func (s *server) processDelta(str stream.DeltaStream, reqCh <-chan *discovery.De
 	var streamNonce int64
 
 	// a collection of stack allocated watches per request type
-	watches := newWatches()
+	watches := newWatches(s.opts.DistinctResourceTypes)
 
 	node := &core.Node{}
 
