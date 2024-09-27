@@ -45,6 +45,10 @@ func (s *server) process(str stream.Stream, reqCh chan *discovery.DiscoveryReque
 	// s.ctx.Done()
 	sw.watches.recompute(s.ctx, reqCh)
 
+	if s.opts.Ordered {
+		return s.processADS(&sw, reqCh, defaultTypeURL)
+	}
+
 	for {
 		// The list of select cases looks like this:
 		// 0: <- ctx.Done
