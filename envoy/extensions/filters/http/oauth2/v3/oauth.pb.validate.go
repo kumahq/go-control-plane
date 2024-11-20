@@ -683,6 +683,10 @@ func (m *OAuth2Config) validate(all bool) error {
 
 	// no validation rules for DisableIdTokenSetCookie
 
+	// no validation rules for DisableAccessTokenSetCookie
+
+	// no validation rules for DisableRefreshTokenSetCookie
+
 	if len(errors) > 0 {
 		return OAuth2ConfigMultiError(errors)
 	}
@@ -984,6 +988,21 @@ func (m *OAuth2Credentials_CookieNames) validate(all bool) error {
 
 	}
 
+	if m.GetOauthNonce() != "" {
+
+		if !_OAuth2Credentials_CookieNames_OauthNonce_Pattern.MatchString(m.GetOauthNonce()) {
+			err := OAuth2Credentials_CookieNamesValidationError{
+				field:  "OauthNonce",
+				reason: "value does not match regex pattern \"^:?[0-9a-zA-Z!#$%&'*+-.^_|~`]+$\"",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
 	if len(errors) > 0 {
 		return OAuth2Credentials_CookieNamesMultiError(errors)
 	}
@@ -1074,3 +1093,5 @@ var _OAuth2Credentials_CookieNames_OauthExpires_Pattern = regexp.MustCompile("^:
 var _OAuth2Credentials_CookieNames_IdToken_Pattern = regexp.MustCompile("^:?[0-9a-zA-Z!#$%&'*+-.^_|~`]+$")
 
 var _OAuth2Credentials_CookieNames_RefreshToken_Pattern = regexp.MustCompile("^:?[0-9a-zA-Z!#$%&'*+-.^_|~`]+$")
+
+var _OAuth2Credentials_CookieNames_OauthNonce_Pattern = regexp.MustCompile("^:?[0-9a-zA-Z!#$%&'*+-.^_|~`]+$")
