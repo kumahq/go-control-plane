@@ -55,6 +55,7 @@ jobs:
       shell: bash
       run: ".github/scripts/get-version-tags.sh"
     - name: Print tags
+      if: steps.sync.outputs.has_new_commits == 'true'
       run: |
         echo "Current fork tag: ${{ steps.new-version-tag.outputs.released_tag }}"
         echo "Newest upstream tag: ${{ steps.new-version-tag.outputs.main_tag }}"
