@@ -27,6 +27,9 @@ IFS='.' read -r -a newParts <<< "$newVersion"
 echo "released_tag=$released_tag" >> $GITHUB_OUTPUT
 echo "main_tag=$main_tag" >> $GITHUB_OUTPUT
 
+echo "Current base tag: $currentVersion"
+echo "Upstream tag: $newVersion"
+
 # Compare each part
 for i in 0 1 2; do
   if [[ ${newParts[i]:-0} -gt ${currentParts[i]:-0} ]]; then
