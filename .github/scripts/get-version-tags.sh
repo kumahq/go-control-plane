@@ -1,7 +1,7 @@
 #!/bin/bash
 
 current_tag=$(git tag --list --merged origin/release --sort=-creatordate | head -n 1)
-main_tag=$(git tag --list --merged main --sort=-creatordate | head -n 1)
+main_tag=$(git tag --list --merged origin/main --sort=-creatordate | head -n 1)
 
 # Remove the prefix `v` and `-kong-*` suffix for comparison
 released_tag="${current_tag%-kong-*}"
