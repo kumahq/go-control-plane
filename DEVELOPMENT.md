@@ -33,7 +33,7 @@ After tagging, push the commit to the repository to finalize the release.
 
 ## Conflict resolution
 
-It might happens that automatic release job can hit a conflict. In this situation maintainer needs to resolve this manually:
+It might happen that automatic release job can hit a conflict. In this situation maintainer needs to resolve this manually:
 
 Instruction
 
@@ -49,7 +49,6 @@ git reset --hard origin/main
 ```bash
 git checkout release
 git reset --hard origin/release
-git clean -fd 
 ```
 4. Remove Untracked Files and Directories
 ```bash
@@ -67,13 +66,13 @@ Upstream tag: v0.13.2
 New tag: v0.13.2-kong-1
 ```
 
-if tags are equal, you are going to see message `"Tags are equal, no need to release"` and you don't need to release/rebase anything
+if tags are equal, you are going to see message `"Tags are equal, no need to release"` and you don't need to release/rebase anything.
 
 6. Rebase release branch between tags:
 ```bash
 git rebase --onto  <Upstream tag> <Current release tag prefix> release
 ```
-7. If you git conflicts, resolve them, and follow git instruction
+7. If you encounter git conflicts, resolve them, and follow git instruction
 * resolve conflicts
 * git add <files>
 * git rebase --continue
