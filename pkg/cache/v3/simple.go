@@ -489,6 +489,15 @@ func (cache *snapshotCache) respond(ctx context.Context, request *Request, value
 	cache.log.Debugf("respond %s%v version %q with version %q", request.GetTypeUrl(), request.GetResourceNames(), request.GetVersionInfo(), version)
 
 	select {
+	case _, ok := <-value:
+		if !ok {
+			cache.log.Debugf("ADS mode: channel is closed %s%v", request.GetTypeUrl(), request.GetResourceNames())
+			return nil
+		}
+	default:
+	}
+
+	select {
 	case value <- createResponse(ctx, request, resources, version, heartbeat):
 		return nil
 	case <-ctx.Done():
