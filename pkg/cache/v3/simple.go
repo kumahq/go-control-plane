@@ -604,6 +604,7 @@ func (cache *snapshotCache) respondDelta(ctx context.Context, snapshot ResourceS
 		systemVersion: snapshot.GetVersion(request.GetTypeUrl()),
 	})
 
+
 	// Only send a response if there were changes
 	// We want to respond immediately for the first wildcard request in a stream, even if the response is empty
 	// otherwise, envoy won't complete initialization
@@ -612,6 +613,8 @@ func (cache *snapshotCache) respondDelta(ctx context.Context, snapshot ResourceS
 			cache.log.Debugf("node: %s, sending delta response for typeURL %s with resources: %v removed resources: %v with wildcard: %t",
 				request.GetNode().GetId(), request.GetTypeUrl(), GetResourceNames(resp.Resources), resp.RemovedResources, state.IsWildcard())
 		}
+		// we don't need to keep state after preparing a response
+		state.CleanupForcePushState()
 		select {
 		case value <- resp:
 			return resp, nil

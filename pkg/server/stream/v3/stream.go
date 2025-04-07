@@ -112,6 +112,10 @@ func (s *StreamState) SetForcePushResource(forcePushResources []string) {
 	}
 }
 
+func (s *StreamState) CleanupForcePushState() {
+	s.forcePushResource = make(map[string]bool)
+}
+
 // GetResourceVersions returns a map of current resources grouped by type URL.
 func (s *StreamState) GetResourceVersions() map[string]string {
 	return s.resourceVersions
