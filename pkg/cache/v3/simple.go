@@ -303,8 +303,14 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 	// of maps are randomized order when ranged over.
 	if cache.ads {
 		info.orderResponseDeltaWatches()
+		forcePushResources := map[types.ResponseType][]string{}
 		for _, key := range info.orderedDeltaWatches {
 			watch := info.deltaWatches[key.ID]
+			responseType := GetResponseType(watch.Request.TypeUrl)
+			if resources, found := forcePushResources[responseType]; found {
+				watch.StreamState.SetForcePushResource(resources)
+			}
+
 			res, err := cache.respondDelta(
 				ctx,
 				snapshot,
@@ -319,6 +325,9 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 			// so we don't want to respond or remove any existing resource watches
 			if res != nil {
 				delete(info.deltaWatches, key.ID)
+				if indexed, typ, ok := getForcePushEdsResourcesNames(responseType, res); ok {
+					forcePushResources[typ] = indexed
+				}
 			}
 		}
 	} else {
@@ -496,6 +505,15 @@ func (cache *snapshotCache) respond(ctx context.Context, request *Request, value
 	}
 }
 
+func getForcePushEdsResourcesNames(typ types.ResponseType, response *RawDeltaResponse) ([]string, types.ResponseType, bool) {
+	switch typ {
+	case types.Cluster:
+		return GetResourceNames(response.Resources), types.Endpoint, true
+	default:
+		return []string{}, types.UnknownType, false
+	}
+}
+
 func createResponse(ctx context.Context, request *Request, resources map[string]types.ResourceWithTTL, version string, heartbeat bool) Response {
 	filtered := make([]types.ResourceWithTTL, 0, len(resources))
 
@@ -594,6 +612,8 @@ func (cache *snapshotCache) respondDelta(ctx context.Context, snapshot ResourceS
 			cache.log.Debugf("node: %s, sending delta response for typeURL %s with resources: %v removed resources: %v with wildcard: %t",
 				request.GetNode().GetId(), request.GetTypeUrl(), GetResourceNames(resp.Resources), resp.RemovedResources, state.IsWildcard())
 		}
+		// we don't need to keep state after preparing a response
+		state.CleanupForcePushState()
 		select {
 		case value <- resp:
 			return resp, nil
