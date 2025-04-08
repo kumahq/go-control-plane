@@ -113,7 +113,7 @@ func (s *StreamState) SetForcePushResource(forcePushResources []string) {
 }
 
 func (s *StreamState) CleanupForcePushState() {
-	for key := range s.forcePushResource{
+	for key := range s.forcePushResource {
 		delete(s.forcePushResource, key)
 	}
 }
