@@ -325,8 +325,8 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 			// so we don't want to respond or remove any existing resource watches
 			if res != nil {
 				delete(info.deltaWatches, key.ID)
-				if indexed, typ, ok := getForcePushEdsResourcesNames(responseType, res); ok {
-					forcePushResources[typ] = indexed
+				if resources, typ, ok := getEdsResourceNamesToForcePush(responseType, res); ok {
+					forcePushResources[typ] = resources
 				}
 			}
 		}
@@ -505,7 +505,7 @@ func (cache *snapshotCache) respond(ctx context.Context, request *Request, value
 	}
 }
 
-func getForcePushEdsResourcesNames(typ types.ResponseType, response *RawDeltaResponse) ([]string, types.ResponseType, bool) {
+func getEdsResourceNamesToForcePush(typ types.ResponseType, response *RawDeltaResponse) ([]string, types.ResponseType, bool) {
 	switch typ {
 	case types.Cluster:
 		return GetResourceNames(response.Resources), types.Endpoint, true
