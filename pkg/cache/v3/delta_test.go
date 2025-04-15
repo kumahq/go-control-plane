@@ -360,10 +360,7 @@ func TestSnapshotCacheDeltaWatchWithForceEDSOfRelevantEndpoints(t *testing.T) {
 		versionMap[testTypes[1]] = vMap
 	case out := <-watches[testTypes[0]]:
 		assert.Len(t, out.(*cache.RawDeltaResponse).Resources, 1)
-		for _, resource := range out.(*cache.RawDeltaResponse).Resources {
-			// should send only endpoint of the changed cluster
-			assert.Equal(t, resource, testEndpoint)
-		}
+		assert.Equal(t, out.(*cache.RawDeltaResponse).Resources[0], testEndpoint)
 		vMap := out.GetNextVersionMap()
 		versionMap[testTypes[0]] = vMap
 	case <-time.After(time.Second):
