@@ -65,7 +65,6 @@ jobs:
         echo "Newest upstream tag: ${{ steps.new-version-tag.outputs.main_tag }}"
         echo "New fork release tag: ${{ steps.new-version-tag.outputs.new_tag }}"
     - name: Release new version
-      if: steps.new-version-tag.outputs.released_tag != steps.new-version-tag.outputs.main_tag
       run: |
         git remote -v
         git remote set-url origin https://${{ steps.github-app-token.outputs.token }}@github.com/kumahq/go-control-plane.git
@@ -75,4 +74,4 @@ jobs:
         git pull
         git rebase --onto ${{ steps.new-version-tag.outputs.main_tag }} ${{ steps.new-version-tag.outputs.released_tag }} release
         git tag ${{ steps.new-version-tag.outputs.new_tag }}
-        git push origin release --tags --force-with-lease
+        git push origin release --tags --force
