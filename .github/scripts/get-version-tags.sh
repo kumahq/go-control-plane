@@ -4,6 +4,9 @@ set -e
 
 echo "=== Detecting new upstream tags ==="
 
+# Define all modules to process
+MODULES=("root" "envoy" "contrib" "ratelimit" "xdsmatcher")
+
 # Function to get latest Kong tag for a module
 get_latest_kong_tag() {
   local module="$1"
@@ -32,54 +35,54 @@ get_upstream_tags() {
   fi
 }
 
+# Function to strip Kong suffix from version tag
+strip_kong_suffix() {
+  local tag="$1"
+  tag="${tag%+kong-*}"
+  tag="${tag%-kong-*}"
+  echo "$tag"
+}
+
+# Function to process new upstream tags for a module
+process_module_tags() {
+  local module="$1"
+  local latest_version="$2"
+
+  if [[ -n "$latest_version" ]]; then
+    # Find tags newer than the latest Kong version
+    local found_latest=false
+    while IFS= read -r tag; do
+      if [[ "$found_latest" == "true" ]]; then
+        new_upstream_tags+=("$tag")
+        echo "  New tag in $module: $tag"
+      elif [[ "$tag" == "$latest_version" ]]; then
+        found_latest=true
+      fi
+    done < <(get_upstream_tags "$module")
+  else
+    # No existing Kong tag, get the latest upstream tag
+    local latest_upstream=$(get_upstream_tags "$module" | tail -n 1)
+    if [[ -n "$latest_upstream" ]]; then
+      new_upstream_tags+=("$latest_upstream")
+      echo "  First tag for $module: $latest_upstream"
+    fi
+  fi
+}
+
 # Find latest Kong tags per module
 echo "Finding latest Kong tags per module..."
-latest_root=$(get_latest_kong_tag "root")
-latest_envoy=$(get_latest_kong_tag "envoy")
-latest_contrib=$(get_latest_kong_tag "contrib")
-latest_ratelimit=$(get_latest_kong_tag "ratelimit")
-latest_xdsmatcher=$(get_latest_kong_tag "xdsmatcher")
-
-# Strip Kong suffix to get base versions
-if [[ -n "$latest_root" ]]; then
-  latest_root="${latest_root%+kong-*}"
-  latest_root="${latest_root%-kong-*}"
-  echo "  root: $latest_root"
-else
-  echo "  root: none"
-fi
-
-if [[ -n "$latest_envoy" ]]; then
-  latest_envoy="${latest_envoy%+kong-*}"
-  latest_envoy="${latest_envoy%-kong-*}"
-  echo "  envoy: $latest_envoy"
-else
-  echo "  envoy: none"
-fi
-
-if [[ -n "$latest_contrib" ]]; then
-  latest_contrib="${latest_contrib%+kong-*}"
-  latest_contrib="${latest_contrib%-kong-*}"
-  echo "  contrib: $latest_contrib"
-else
-  echo "  contrib: none"
-fi
-
-if [[ -n "$latest_ratelimit" ]]; then
-  latest_ratelimit="${latest_ratelimit%+kong-*}"
-  latest_ratelimit="${latest_ratelimit%-kong-*}"
-  echo "  ratelimit: $latest_ratelimit"
-else
-  echo "  ratelimit: none"
-fi
-
-if [[ -n "$latest_xdsmatcher" ]]; then
-  latest_xdsmatcher="${latest_xdsmatcher%+kong-*}"
-  latest_xdsmatcher="${latest_xdsmatcher%-kong-*}"
-  echo "  xdsmatcher: $latest_xdsmatcher"
-else
-  echo "  xdsmatcher: none"
-fi
+latest_versions=()
+for module in "${MODULES[@]}"; do
+  kong_tag=$(get_latest_kong_tag "$module")
+  if [[ -n "$kong_tag" ]]; then
+    stripped_version=$(strip_kong_suffix "$kong_tag")
+    latest_versions+=("$stripped_version")
+    echo "  $module: $stripped_version"
+  else
+    latest_versions+=("")
+    echo "  $module: none"
+  fi
+done
 
 # Find new upstream tags for each module
 new_upstream_tags=()
@@ -87,100 +90,9 @@ new_upstream_tags=()
 echo ""
 echo "Checking for new upstream tags..."
 
-# Process root module
-if [[ -n "$latest_root" ]]; then
-  found_latest=false
-  while IFS= read -r tag; do
-    if [[ "$found_latest" == "true" ]]; then
-      new_upstream_tags+=("$tag")
-      echo "  New tag in root: $tag"
-    elif [[ "$tag" == "$latest_root" ]]; then
-      found_latest=true
-    fi
-  done < <(get_upstream_tags "root")
-else
-  latest_upstream=$(get_upstream_tags "root" | tail -n 1)
-  if [[ -n "$latest_upstream" ]]; then
-    new_upstream_tags+=("$latest_upstream")
-    echo "  First tag for root: $latest_upstream"
-  fi
-fi
-
-# Process envoy module
-if [[ -n "$latest_envoy" ]]; then
-  found_latest=false
-  while IFS= read -r tag; do
-    if [[ "$found_latest" == "true" ]]; then
-      new_upstream_tags+=("$tag")
-      echo "  New tag in envoy: $tag"
-    elif [[ "$tag" == "$latest_envoy" ]]; then
-      found_latest=true
-    fi
-  done < <(get_upstream_tags "envoy")
-else
-  latest_upstream=$(get_upstream_tags "envoy" | tail -n 1)
-  if [[ -n "$latest_upstream" ]]; then
-    new_upstream_tags+=("$latest_upstream")
-    echo "  First tag for envoy: $latest_upstream"
-  fi
-fi
-
-# Process contrib module
-if [[ -n "$latest_contrib" ]]; then
-  found_latest=false
-  while IFS= read -r tag; do
-    if [[ "$found_latest" == "true" ]]; then
-      new_upstream_tags+=("$tag")
-      echo "  New tag in contrib: $tag"
-    elif [[ "$tag" == "$latest_contrib" ]]; then
-      found_latest=true
-    fi
-  done < <(get_upstream_tags "contrib")
-else
-  latest_upstream=$(get_upstream_tags "contrib" | tail -n 1)
-  if [[ -n "$latest_upstream" ]]; then
-    new_upstream_tags+=("$latest_upstream")
-    echo "  First tag for contrib: $latest_upstream"
-  fi
-fi
-
-# Process ratelimit module
-if [[ -n "$latest_ratelimit" ]]; then
-  found_latest=false
-  while IFS= read -r tag; do
-    if [[ "$found_latest" == "true" ]]; then
-      new_upstream_tags+=("$tag")
-      echo "  New tag in ratelimit: $tag"
-    elif [[ "$tag" == "$latest_ratelimit" ]]; then
-      found_latest=true
-    fi
-  done < <(get_upstream_tags "ratelimit")
-else
-  latest_upstream=$(get_upstream_tags "ratelimit" | tail -n 1)
-  if [[ -n "$latest_upstream" ]]; then
-    new_upstream_tags+=("$latest_upstream")
-    echo "  First tag for ratelimit: $latest_upstream"
-  fi
-fi
-
-# Process xdsmatcher module
-if [[ -n "$latest_xdsmatcher" ]]; then
-  found_latest=false
-  while IFS= read -r tag; do
-    if [[ "$found_latest" == "true" ]]; then
-      new_upstream_tags+=("$tag")
-      echo "  New tag in xdsmatcher: $tag"
-    elif [[ "$tag" == "$latest_xdsmatcher" ]]; then
-      found_latest=true
-    fi
-  done < <(get_upstream_tags "xdsmatcher")
-else
-  latest_upstream=$(get_upstream_tags "xdsmatcher" | tail -n 1)
-  if [[ -n "$latest_upstream" ]]; then
-    new_upstream_tags+=("$latest_upstream")
-    echo "  First tag for xdsmatcher: $latest_upstream"
-  fi
-fi
+for i in "${!MODULES[@]}"; do
+  process_module_tags "${MODULES[$i]}" "${latest_versions[$i]}"
+done
 
 if [[ ${#new_upstream_tags[@]} -eq 0 ]]; then
   echo ""
@@ -195,7 +107,8 @@ echo ""
 echo "Found ${#new_upstream_tags[@]} new upstream tags"
 
 # Get root module versions for rebase decision
-current_root_tag="$latest_root"
+# Note: root is the first module in MODULES array (index 0)
+current_root_tag="${latest_versions[0]}"
 main_root_tag=$(git tag --list --merged origin/main 'v[0-9].[0-9]*.[0-9]*' | grep -v '\-kong-' | grep -v '+kong-' | grep -v '/' | sort -V | tail -n 1)
 
 echo ""
@@ -233,8 +146,8 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "released_tag=$current_root_tag" >> "$GITHUB_OUTPUT"
   echo "main_tag=$main_root_tag" >> "$GITHUB_OUTPUT"
 
-  # Export all new tags as a JSON array
-  new_tags_json=$(printf '%s\n' "${new_tags[@]}" | jq -R . | jq -s .)
+  # Export all new tags as a JSON array (compact format for GitHub Actions)
+  new_tags_json=$(printf '%s\n' "${new_tags[@]}" | jq -R . | jq -sc .)
   echo "new_tags=$new_tags_json" >> "$GITHUB_OUTPUT"
 fi
 
