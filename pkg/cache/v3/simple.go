@@ -352,20 +352,20 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 		return err
 	}
 
-	replyWatch := func(watch DeltaResponseWatch, id int64) error {
+	replyWatch := func(watch DeltaResponseWatch, id int64) (*RawDeltaResponse, error) {
 		resp := createDeltaResponse(snapshot, watch, false)
 		// If we receive a nil response here, that means there has been no state change
 		// so we don't want to respond or remove any existing resource watches
 		if resp == nil {
-			return nil
+			return nil, nil
 		}
 
 		err := cache.respondDelta(ctx, watch, resp)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		delete(info.deltaWatches, id)
-		return nil
+		return resp, nil
 	}
 
 	// If ADS is enabled we need to order response delta watches so we guarantee
@@ -373,17 +373,28 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 	// of maps are randomized order when ranged over.
 	if cache.ads {
 		info.orderResponseDeltaWatches()
+		forcePushResources := map[types.ResponseType][]string{}
 		for _, key := range info.orderedDeltaWatches {
 			watch := info.deltaWatches[key.ID]
-			err := replyWatch(watch, key.ID)
+			responseType := GetResponseType(watch.Request.TypeUrl)
+			if resources, found := forcePushResources[responseType]; found {
+				watch.subscription.SetForcePushResource(resources)
+			}
+
+			res, err := replyWatch(watch, key.ID)
 			if err != nil {
 				return err
+			}
+			// A nil response means there has been no state change, so nothing to chain from
+			if res != nil {
+				if resources, typ, ok := getEdsResourceNamesToForcePush(responseType, res); ok {
+					forcePushResources[typ] = resources
+				}
 			}
 		}
 	} else {
 		for id, watch := range info.deltaWatches {
-			err := replyWatch(watch, id)
-			if err != nil {
+			if _, err := replyWatch(watch, id); err != nil {
 				return err
 			}
 		}
@@ -494,6 +505,15 @@ func difference[T any](resources map[string]types.ResourceWithTTL, names map[str
 		}
 	}
 	return diff
+}
+
+func getEdsResourceNamesToForcePush(typ types.ResponseType, response *RawDeltaResponse) ([]string, types.ResponseType, bool) {
+	switch typ {
+	case types.Cluster:
+		return GetResourceNames(response.GetRawResources()), types.Endpoint, true
+	default:
+		return []string{}, types.UnknownType, false
+	}
 }
 
 // createResponse evaluates the provided watch against the given snapshot to build the response to return.
@@ -721,7 +741,7 @@ func createDeltaResponse(snapshot ResourceSnapshot, watch DeltaResponseWatch, re
 	addIfChanged := func(name string, res types.ResourceWithTTL) {
 		resVersion := versionMap[name] // Version in snapshot
 		knownVersion, known := returnedResources[name]
-		if known && knownVersion == resVersion {
+		if known && knownVersion == resVersion && !watch.subscription.ShouldForcePushResource(name) {
 			return
 		}
 		resourcesToReturn = append(resourcesToReturn, newCachedResourceWithTTL(name, res, version))
@@ -778,6 +798,8 @@ func createDeltaResponse(snapshot ResourceSnapshot, watch DeltaResponseWatch, re
 func (cache *snapshotCache) respondDelta(ctx context.Context, watch DeltaResponseWatch, resp *RawDeltaResponse) error {
 	cache.log.Debugf("node: %s, sending delta response for typeURL %s with resources: %v removed resources: %v with wildcard: %t",
 		watch.Request.GetNode().GetId(), watch.Request.GetTypeUrl(), getCachedResourceNames(resp.resources), resp.removedResources, watch.subscription.IsWildcard())
+	// we don't need to keep the force push state after preparing a response
+	watch.subscription.CleanupForcePushState()
 	resp.Ctx = ctx
 	select {
 	case watch.Response <- resp:

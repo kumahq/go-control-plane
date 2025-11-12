@@ -1,6 +1,9 @@
 package config
 
-import "github.com/envoyproxy/go-control-plane/pkg/log"
+import (
+	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
+	"github.com/envoyproxy/go-control-plane/pkg/log"
+)
 
 // Opts for individual xDS implementations that can be
 // utilized through the functional opts pattern.
@@ -15,12 +18,15 @@ type Opts struct {
 
 	// Deactivate legacy wildcard mode for specific resource types
 	legacyWildcardDeactivatedTypes map[string]struct{}
+
+	DistinctResourceTypes int
 }
 
 func NewOpts() Opts {
 	return Opts{
-		Ordered: false,
-		Logger:  log.NewDefaultLogger(),
+		Ordered:               false,
+		Logger:                log.NewDefaultLogger(),
+		DistinctResourceTypes: int(types.UnknownType),
 	}
 }
 
