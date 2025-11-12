@@ -77,71 +77,102 @@ After tagging, push the commit to the repository to finalize the release.
 
 ## Conflict resolution
 
-It might happen that the automatic release job can hit a conflict. In this situation the maintainer needs to resolve this manually
+The automatic release job rebases Kong custom commits on top of new upstream versions. If a conflict occurs, manual resolution is needed.
 
-### Instruction
+### Understanding the Branch Structure
 
-1. Fetch current `main` and `release` branch
+- **main branch**: Mirrors upstream, synced daily
+- **release branch**: Contains upstream commits + Kong custom commits on top
+- **Kong tags** (e.g., `v0.14.0+kong-1`): Point to the HEAD of release (custom commit), not the upstream commit
+
+### Manual Rebase Instructions
+
+1. Fetch current `main` and `release` branches with all tags
 
    ```bash
    git fetch origin --tags
    ```
 
-2. Update the current main branch with origin
-
-   ```bash
-   git reset --hard origin/main
-   ```
-
-3. Change to the release branch
+2. Checkout and reset the release branch
 
    ```bash
    git checkout release
    git reset --hard origin/release
-   ```
-
-4. Remove Untracked files and directories
-
-   ```bash
    git clean -fd
    ```
 
-5. Get the new tag value
+3. Detect new tags and check if rebase is needed
 
    ```bash
    ./.github/scripts/get-version-tags.sh
    ```
 
-   **Output:**
-   
-   ```bash
-   Current release tag prefix: v0.13.1
-   Upstream tag: v0.13.2
-   New tag: v0.13.2+kong-1
-   ```
-
-   if tags are equal, you are going to see message `"Tags are equal, no need to release"` and you don't need to release/rebase anything
-
-6. Rebase release branch between tags:
+   **Example output:**
 
    ```bash
-   git rebase --onto "<upstream-tag>" <current-release-tag-prefix> release
+   Current release root tag: v0.13.4
+   Upstream root tag: v0.14.0
+   Current base commit: 2d07f5a1
+   Found 2 custom Kong commit(s) on release branch
+   Root version changed - will rebase preserving custom commits
+
+   New Kong tags to be created:
+     - v0.14.0+kong-1
+     - envoy/v1.36.0+kong-1
    ```
 
-7. If you encounter git conflicts, resolve them, and follow git instruction
+   If you see `"No new upstream tags found"`, no action is needed.
 
-   - resolve conflicts
-   - `git add <files>`
-   - `git rebase --continue`
-
-8. Tag the commit
+4. Identify the base commit (the last upstream commit before Kong changes)
 
    ```bash
-   git tag "<new-tag>"
+   # This is shown in the script output as "Current base commit"
+   BASE_COMMIT="2d07f5a1"      # From script output
+   NEW_TAG="v0.14.0"           # The new upstream tag from output
    ```
 
-9. Push changes to origin
+5. Rebase Kong custom commits onto the new upstream tag
+
+   ```bash
+   git rebase --onto "$NEW_TAG" "$BASE_COMMIT" release
+   ```
+
+   This command:
+   - Takes all commits after `BASE_COMMIT` on the release branch (your custom Kong commits)
+   - Rebases them onto `NEW_TAG` (the new upstream version)
+   - Your custom commits remain on top
+
+6. If you encounter conflicts:
+
+   ```bash
+   # Resolve conflicts in your editor
+   git add <resolved-files>
+   git rebase --continue
+
+   # Or abort if needed
+   # git rebase --abort
+   ```
+
+7. Tag the rebased HEAD with all module tags
+
+   ```bash
+   # Apply all Kong tags from the script output
+   # Example:
+   git tag v0.14.0+kong-1
+   git tag envoy/v1.36.0+kong-1
+   git tag contrib/v1.36.0+kong-1
+   git tag xdsmatcher/v0.14.0+kong-1
+   ```
+
+8. Push changes to origin
 
    ```bash
    git push origin release --tags --force-with-lease
    ```
+
+### Important Notes
+
+- The Kong tags (`+kong-1`) always point to **your custom commit (HEAD of release)**, not the upstream commit
+- Custom commits are always **on top** of the upstream base
+- When upstream releases a new version, we rebase your commits to keep them on top
+- All module tags (root, envoy, contrib, etc.) are created together on the same commit (HEAD)

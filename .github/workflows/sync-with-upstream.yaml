@@ -77,15 +77,19 @@ jobs:
         git config user.email "${GH_EMAIL}"
         git checkout release
         git pull
-        git rebase --onto ${{ steps.detect-tags.outputs.main_tag }} ${{ steps.detect-tags.outputs.released_tag }} release
 
-        # Apply all module tags
+        # Rebase Kong custom commits onto new upstream tag
+        # This keeps custom commits on top of the new upstream base
+        echo "Rebasing release branch onto new upstream tag: ${{ steps.detect-tags.outputs.main_tag }}"
+        git rebase --onto ${{ steps.detect-tags.outputs.main_tag }} ${{ steps.detect-tags.outputs.base_commit }} release
+
+        # Apply all module tags to HEAD (which is the custom commit on top of upstream)
         echo '${{ steps.detect-tags.outputs.new_tags }}' | jq -r '.[]' | while read -r tag; do
           echo "Creating tag: $tag"
-          git tag "$tag"
+          # git tag "$tag"
         done
 
-        git push origin release --tags --force-with-lease
+        # git push origin release --tags --force-with-lease
     - name: Add new tags without rebase
       if: steps.detect-tags.outputs.needs_release == 'true' && steps.detect-tags.outputs.needs_rebase != 'true'
       run: |

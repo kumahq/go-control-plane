@@ -209,7 +209,7 @@ if [[ -z "$current_root_tag" ]]; then
   echo "No existing release - will need to rebase"
 elif [[ "$main_root_tag" != "$current_root_tag" ]]; then
   needs_rebase=true
-  echo "Root version changed - will need to rebase"
+  echo "Root version changed - will rebase preserving custom commits"
 else
   echo "Root version unchanged - will only add new tags"
 fi
