@@ -58,6 +58,12 @@ type Subscription interface {
 	// This considers subtleties related to the current migration of wildcard definitions within the protocol.
 	// More details on the behavior of wildcard are present at https://www.envoyproxy.io/docs/envoy/latest/api-docs/xds_protocol#how-the-client-specifies-what-resources-to-return
 	IsWildcard() bool
+
+	SetForcePushResource([]string)
+
+	CleanupForcePushState()
+
+	ShouldForcePushResource(string) bool
 }
 
 // ConfigWatcher requests watches for configuration resources by a node, last

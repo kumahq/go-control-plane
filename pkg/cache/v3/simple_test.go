@@ -90,6 +90,16 @@ var (
 		rsrc.RuntimeType:     nil,
 	}
 
+	namesTwoClusters = map[string][]string{
+		rsrc.EndpointType:    {clusterName, anotherClusterName},
+		rsrc.ClusterType:     nil,
+		rsrc.RouteType:       {routeName, embeddedRouteName},
+		rsrc.ScopedRouteType: nil,
+		rsrc.VirtualHostType: nil,
+		rsrc.ListenerType:    nil,
+		rsrc.RuntimeType:     nil,
+	}
+
 	testTypes = []string{
 		rsrc.EndpointType,
 		rsrc.ClusterType,

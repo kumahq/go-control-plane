@@ -45,7 +45,7 @@ func createDeltaResponse(ctx context.Context, req *DeltaRequest, sub Subscriptio
 			version := resources.versionMap[name]
 			nextVersionMap[name] = version
 			prevVersion, found := sub.ReturnedResources()[name]
-			if !found || (prevVersion != version) {
+			if !found || (prevVersion != version) || sub.ShouldForcePushResource(name) {
 				filtered = append(filtered, newCachedResource(name, r, version))
 			}
 		}
@@ -65,7 +65,7 @@ func createDeltaResponse(ctx context.Context, req *DeltaRequest, sub Subscriptio
 			prevVersion, found := sub.ReturnedResources()[name]
 			if r, ok := resources.resourceMap[name]; ok {
 				nextVersion := resources.versionMap[name]
-				if prevVersion != nextVersion {
+				if prevVersion != nextVersion || sub.ShouldForcePushResource(name) {
 					filtered = append(filtered, newCachedResource(name, r, nextVersion))
 				}
 				nextVersionMap[name] = nextVersion
