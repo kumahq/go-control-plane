@@ -11,10 +11,10 @@ get_latest_kong_tag() {
 
   if [[ "$module" == "root" ]]; then
     pattern="v[0-9]*"
-    git tag --list --merged origin/release "$pattern" | grep -E '(\+kong-|-kong-)' | grep -v '/' | sort -V | tail -n 1
+    git tag --list --merged origin/test-rel "$pattern" | grep -E '(\+kong-|-kong-)' | grep -v '/' | sort -V | tail -n 1
   else
     pattern="${module}/v[0-9]*"
-    git tag --list --merged origin/release "$pattern" | grep -E '(\+kong-|-kong-)' | sort -V | tail -n 1
+    git tag --list --merged origin/test-rel "$pattern" | grep -E '(\+kong-|-kong-)' | sort -V | tail -n 1
   fi
 }
 
