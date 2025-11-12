@@ -2,101 +2,241 @@
 
 set -e
 
-# Get the root module tag (main version) from each branch
-current_root_tag=$(git tag --list 'v[0-9].[0-9]*.[0-9]*' --merged origin/release --sort=-creatordate | grep -v '+kong-' | head -n 1)
-main_root_tag=$(git tag --list 'v[0-9].[0-9]*.[0-9]*' --merged origin/main --sort=-creatordate | head -n 1)
+echo "=== Detecting new upstream tags ==="
 
-# Remove the prefix `v` and any suffix for comparison
-released_tag="${current_root_tag%+kong-*}"
-released_tag="${released_tag%-kong-*}"
-currentVersion="${released_tag#v}"
+# Function to get latest Kong tag for a module
+get_latest_kong_tag() {
+  local module="$1"
+  local pattern
 
-# The main branch tag
-newVersion="${main_root_tag#v}"
+  if [[ "$module" == "root" ]]; then
+    pattern="v[0-9]*"
+    git tag --list --merged origin/release "$pattern" | grep -E '(\+kong-|-kong-)' | grep -v '/' | sort -V | tail -n 1
+  else
+    pattern="${module}/v[0-9]*"
+    git tag --list --merged origin/release "$pattern" | grep -E '(\+kong-|-kong-)' | sort -V | tail -n 1
+  fi
+}
 
-echo "Current release root tag: $released_tag"
-echo "Upstream root tag: $main_root_tag"
+# Function to get upstream tags for a module
+get_upstream_tags() {
+  local module="$1"
+  local pattern
 
-# Get all tags pointing to the same commit as the main root tag
-main_commit=$(git rev-list -n 1 "refs/tags/${main_root_tag}")
-echo "Upstream commit: $main_commit"
+  if [[ "$module" == "root" ]]; then
+    pattern="v[0-9]*"
+    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '+kong-' | grep -v '/' | sort -V
+  else
+    pattern="${module}/v[0-9]*"
+    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '+kong-' | sort -V
+  fi
+}
 
-# Get all upstream tags for this commit (excluding any kong-tagged versions)
-upstream_tags=()
-while IFS= read -r tag; do
-  upstream_tags+=("$tag")
-done < <(git tag --points-at "$main_commit" | grep -v '\-kong-' | grep -v '+kong-' | sort)
+# Find latest Kong tags per module
+echo "Finding latest Kong tags per module..."
+latest_root=$(get_latest_kong_tag "root")
+latest_envoy=$(get_latest_kong_tag "envoy")
+latest_contrib=$(get_latest_kong_tag "contrib")
+latest_ratelimit=$(get_latest_kong_tag "ratelimit")
+latest_xdsmatcher=$(get_latest_kong_tag "xdsmatcher")
 
-echo "Found ${#upstream_tags[@]} upstream tags for this release:"
-for tag in "${upstream_tags[@]}"; do
-  echo "  - $tag"
-done
+# Strip Kong suffix to get base versions
+if [[ -n "$latest_root" ]]; then
+  latest_root="${latest_root%+kong-*}"
+  latest_root="${latest_root%-kong-*}"
+  echo "  root: $latest_root"
+else
+  echo "  root: none"
+fi
 
-# Check if we need to create a new release
-new_root_tag="${main_root_tag}+kong-1"
+if [[ -n "$latest_envoy" ]]; then
+  latest_envoy="${latest_envoy%+kong-*}"
+  latest_envoy="${latest_envoy%-kong-*}"
+  echo "  envoy: $latest_envoy"
+else
+  echo "  envoy: none"
+fi
 
-# Get the current release commit's tags to find the highest kong version
-if [[ -n "$current_root_tag" ]]; then
-  release_commit=$(git rev-list -n 1 "refs/tags/${current_root_tag}" 2>/dev/null || echo "")
-  if [[ -n "$release_commit" ]]; then
-    # Find the highest kong version for the current release
-    highest_kong_version=0
-    while IFS= read -r tag; do
-      if [[ $tag =~ \+kong-([0-9]+)$ ]]; then
-        kong_num="${BASH_REMATCH[1]}"
-        if [[ $kong_num -gt $highest_kong_version ]]; then
-          highest_kong_version=$kong_num
-        fi
-      fi
-    done < <(git tag --points-at "$release_commit" | grep '+kong-')
+if [[ -n "$latest_contrib" ]]; then
+  latest_contrib="${latest_contrib%+kong-*}"
+  latest_contrib="${latest_contrib%-kong-*}"
+  echo "  contrib: $latest_contrib"
+else
+  echo "  contrib: none"
+fi
 
-    echo "Current highest kong version: $highest_kong_version"
+if [[ -n "$latest_ratelimit" ]]; then
+  latest_ratelimit="${latest_ratelimit%+kong-*}"
+  latest_ratelimit="${latest_ratelimit%-kong-*}"
+  echo "  ratelimit: $latest_ratelimit"
+else
+  echo "  ratelimit: none"
+fi
+
+if [[ -n "$latest_xdsmatcher" ]]; then
+  latest_xdsmatcher="${latest_xdsmatcher%+kong-*}"
+  latest_xdsmatcher="${latest_xdsmatcher%-kong-*}"
+  echo "  xdsmatcher: $latest_xdsmatcher"
+else
+  echo "  xdsmatcher: none"
+fi
+
+# Find new upstream tags for each module
+new_upstream_tags=()
+
+echo ""
+echo "Checking for new upstream tags..."
+
+# Process root module
+if [[ -n "$latest_root" ]]; then
+  found_latest=false
+  while IFS= read -r tag; do
+    if [[ "$found_latest" == "true" ]]; then
+      new_upstream_tags+=("$tag")
+      echo "  New tag in root: $tag"
+    elif [[ "$tag" == "$latest_root" ]]; then
+      found_latest=true
+    fi
+  done < <(get_upstream_tags "root")
+else
+  latest_upstream=$(get_upstream_tags "root" | tail -n 1)
+  if [[ -n "$latest_upstream" ]]; then
+    new_upstream_tags+=("$latest_upstream")
+    echo "  First tag for root: $latest_upstream"
   fi
 fi
 
-# Compare versions
-IFS='.' read -r -a currentParts <<< "$currentVersion"
-IFS='.' read -r -a newParts <<< "$newVersion"
-
-should_release=false
-
-# Compare each part
-for i in 0 1 2; do
-  if [[ ${newParts[i]:-0} -gt ${currentParts[i]:-0} ]]; then
-    echo "The upstream version is higher - new release needed."
-    should_release=true
-    break
-  elif [[ ${newParts[i]:-0} -lt ${currentParts[i]:-0} ]]; then
-    echo "The current tag is higher. That shouldn't be the case, please fix tagging."
-    exit 1
+# Process envoy module
+if [[ -n "$latest_envoy" ]]; then
+  found_latest=false
+  while IFS= read -r tag; do
+    if [[ "$found_latest" == "true" ]]; then
+      new_upstream_tags+=("$tag")
+      echo "  New tag in envoy: $tag"
+    elif [[ "$tag" == "$latest_envoy" ]]; then
+      found_latest=true
+    fi
+  done < <(get_upstream_tags "envoy")
+else
+  latest_upstream=$(get_upstream_tags "envoy" | tail -n 1)
+  if [[ -n "$latest_upstream" ]]; then
+    new_upstream_tags+=("$latest_upstream")
+    echo "  First tag for envoy: $latest_upstream"
   fi
-done
+fi
 
-if [[ "$should_release" == "false" ]]; then
-  echo "Tags are equal, no need to release"
+# Process contrib module
+if [[ -n "$latest_contrib" ]]; then
+  found_latest=false
+  while IFS= read -r tag; do
+    if [[ "$found_latest" == "true" ]]; then
+      new_upstream_tags+=("$tag")
+      echo "  New tag in contrib: $tag"
+    elif [[ "$tag" == "$latest_contrib" ]]; then
+      found_latest=true
+    fi
+  done < <(get_upstream_tags "contrib")
+else
+  latest_upstream=$(get_upstream_tags "contrib" | tail -n 1)
+  if [[ -n "$latest_upstream" ]]; then
+    new_upstream_tags+=("$latest_upstream")
+    echo "  First tag for contrib: $latest_upstream"
+  fi
+fi
+
+# Process ratelimit module
+if [[ -n "$latest_ratelimit" ]]; then
+  found_latest=false
+  while IFS= read -r tag; do
+    if [[ "$found_latest" == "true" ]]; then
+      new_upstream_tags+=("$tag")
+      echo "  New tag in ratelimit: $tag"
+    elif [[ "$tag" == "$latest_ratelimit" ]]; then
+      found_latest=true
+    fi
+  done < <(get_upstream_tags "ratelimit")
+else
+  latest_upstream=$(get_upstream_tags "ratelimit" | tail -n 1)
+  if [[ -n "$latest_upstream" ]]; then
+    new_upstream_tags+=("$latest_upstream")
+    echo "  First tag for ratelimit: $latest_upstream"
+  fi
+fi
+
+# Process xdsmatcher module
+if [[ -n "$latest_xdsmatcher" ]]; then
+  found_latest=false
+  while IFS= read -r tag; do
+    if [[ "$found_latest" == "true" ]]; then
+      new_upstream_tags+=("$tag")
+      echo "  New tag in xdsmatcher: $tag"
+    elif [[ "$tag" == "$latest_xdsmatcher" ]]; then
+      found_latest=true
+    fi
+  done < <(get_upstream_tags "xdsmatcher")
+else
+  latest_upstream=$(get_upstream_tags "xdsmatcher" | tail -n 1)
+  if [[ -n "$latest_upstream" ]]; then
+    new_upstream_tags+=("$latest_upstream")
+    echo "  First tag for xdsmatcher: $latest_upstream"
+  fi
+fi
+
+if [[ ${#new_upstream_tags[@]} -eq 0 ]]; then
+  echo ""
+  echo "No new upstream tags found. No action needed."
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    echo "needs_release=false" >> "$GITHUB_OUTPUT"
+  fi
   exit 0
 fi
 
-# Build the list of new tags with +kong-1 suffix
+echo ""
+echo "Found ${#new_upstream_tags[@]} new upstream tags"
+
+# Get root module versions for rebase decision
+current_root_tag="$latest_root"
+main_root_tag=$(git tag --list --merged origin/main 'v[0-9].[0-9]*.[0-9]*' | grep -v '\-kong-' | grep -v '+kong-' | grep -v '/' | sort -V | tail -n 1)
+
+echo ""
+echo "Current release root tag: ${current_root_tag:-none}"
+echo "Upstream root tag: $main_root_tag"
+
+# Determine if we need to rebase (root version changed)
+needs_rebase=false
+if [[ -z "$current_root_tag" ]]; then
+  needs_rebase=true
+  echo "No existing release - will need to rebase"
+elif [[ "$main_root_tag" != "$current_root_tag" ]]; then
+  needs_rebase=true
+  echo "Root version changed - will need to rebase"
+else
+  echo "Root version unchanged - will only add new tags"
+fi
+
+# Build list of new Kong tags
 new_tags=()
-for tag in "${upstream_tags[@]}"; do
+for tag in "${new_upstream_tags[@]}"; do
   new_tags+=("${tag}+kong-1")
 done
 
 echo ""
-echo "New tags to be created:"
+echo "New Kong tags to be created:"
 for tag in "${new_tags[@]}"; do
   echo "  - $tag"
 done
 
 # Output for GitHub Actions
-echo "released_tag=$released_tag" >> $GITHUB_OUTPUT
-echo "main_tag=$main_root_tag" >> $GITHUB_OUTPUT
-echo "main_commit=$main_commit" >> $GITHUB_OUTPUT
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  echo "needs_release=true" >> "$GITHUB_OUTPUT"
+  echo "needs_rebase=$needs_rebase" >> "$GITHUB_OUTPUT"
+  echo "released_tag=$current_root_tag" >> "$GITHUB_OUTPUT"
+  echo "main_tag=$main_root_tag" >> "$GITHUB_OUTPUT"
 
-# Export all new tags as a JSON array for easy parsing in the workflow
-new_tags_json=$(printf '%s\n' "${new_tags[@]}" | jq -R . | jq -s .)
-echo "new_tags=$new_tags_json" >> $GITHUB_OUTPUT
+  # Export all new tags as a JSON array
+  new_tags_json=$(printf '%s\n' "${new_tags[@]}" | jq -R . | jq -s .)
+  echo "new_tags=$new_tags_json" >> "$GITHUB_OUTPUT"
+fi
 
-# Also export the root tag for backward compatibility
-echo "new_tag=$new_root_tag" >> $GITHUB_OUTPUT
+echo ""
+echo "=== Detection complete ==="
