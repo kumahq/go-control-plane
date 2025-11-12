@@ -63,7 +63,10 @@ jobs:
       run: |
         echo "Current fork tag: ${{ steps.new-version-tag.outputs.released_tag }}"
         echo "Newest upstream tag: ${{ steps.new-version-tag.outputs.main_tag }}"
-        echo "New fork release tag: ${{ steps.new-version-tag.outputs.new_tag }}"
+        echo "Upstream commit: ${{ steps.new-version-tag.outputs.main_commit }}"
+        echo ""
+        echo "New tags to be created:"
+        echo '${{ steps.new-version-tag.outputs.new_tags }}' | jq -r '.[]'
     - name: Release new version
       if: steps.new-version-tag.outputs.released_tag != steps.new-version-tag.outputs.main_tag
       run: |
@@ -74,5 +77,11 @@ jobs:
         git checkout release
         git pull
         git rebase --onto ${{ steps.new-version-tag.outputs.main_tag }} ${{ steps.new-version-tag.outputs.released_tag }} release
-        git tag ${{ steps.new-version-tag.outputs.new_tag }}
+
+        # Apply all module tags
+        echo '${{ steps.new-version-tag.outputs.new_tags }}' | jq -r '.[]' | while read -r tag; do
+          echo "Creating tag: $tag"
+          git tag "$tag"
+        done
+
         git push origin release --tags --force-with-lease

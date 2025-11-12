@@ -17,12 +17,32 @@ In this fork, we maintain two branches:
 
 ## Releasing
 
-For standard releases, the `Sync with Upstream` action handles synchronization and creates custom versions whenever there’s a new upstream release. We fetch upstream tags, so, for example, `v0.13.1` in this fork corresponds directly to the same version in the upstream repository
+For standard releases, the `Sync with Upstream` action handles synchronization and creates custom versions whenever there's a new upstream release. We fetch upstream tags, so, for example, `v0.13.1` in this fork corresponds directly to the same version in the upstream repository
 
-Our job appends a custom suffix (`+kong-1`) to the upstream tag. If you merge a change and want to create a release, you should tag your commit using the following pattern:
+### Multi-Module Tagging
+
+Upstream now uses multi-module tagging, creating separate tags for each Go module in the repository. For a single release commit, you'll see multiple tags like:
+
+- `v0.13.4` (root module)
+- `envoy/v1.32.3` (envoy module)
+- `contrib/v1.32.3` (contrib module)
+- `xdsmatcher/v0.13.4` (xdsmatcher module)
+- `ratelimit/v0.1.0` (ratelimit module)
+
+Our sync automation detects all these tags and applies the `+kong-N` suffix to **all of them**, creating:
+
+- `v0.13.4+kong-1`
+- `envoy/v1.32.3+kong-1`
+- `contrib/v1.32.3+kong-1`
+- `xdsmatcher/v0.13.4+kong-1`
+- `ratelimit/v0.1.0+kong-1`
+
+### Manual Releases
+
+If you merge a custom change and want to create a release, you need to tag your commit with **all module tags** using the following pattern:
 
 ```text
-<current-version>+kong-<incremented-number>
+<module-prefix><current-version>+kong-<incremented-number>
 ```
 
 ### Why use `+` instead of `-`?
@@ -32,9 +52,26 @@ Our job appends a custom suffix (`+kong-1`) to the upstream tag. If you merge a 
 
 #### Example
 
-The current tag is `v0.13.1+kong-1`. After merging your changes, you want to release a new version. You should tag your commit as:
+The current tags are:
+- `v0.13.1+kong-1`
+- `envoy/v1.32.2+kong-1`
+- `xdsmatcher/v0.13.1+kong-1`
 
-`v0.13.1+kong-2`
+After merging your changes, you want to release a new version. You should tag your commit with **all** the following tags:
+
+- `v0.13.1+kong-2`
+- `envoy/v1.32.2+kong-2`
+- `xdsmatcher/v0.13.1+kong-2`
+- (and any other module tags present)
+
+```bash
+# Example: Creating all tags for a custom release
+git tag v0.13.1+kong-2
+git tag envoy/v1.32.2+kong-2
+git tag xdsmatcher/v0.13.1+kong-2
+git tag ratelimit/v0.1.0+kong-2
+git push origin --tags
+```
 
 After tagging, push the commit to the repository to finalize the release.
 
