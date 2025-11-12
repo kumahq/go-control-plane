@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -294,4 +295,92 @@ func TestSnapshotCacheDeltaWatchCancel(t *testing.T) {
 
 	s := c.GetStatusInfo("missing")
 	assert.Nilf(t, s, "should not return a status for unknown key: got %#v", s)
+}
+
+func TestSnapshotCacheDeltaWatchWithForceEDSOfRelevantEndpoint(t *testing.T) {
+	c := cache.NewSnapshotCache(true, group{}, log.NewTestLogger(t))
+	watches := make(map[string]chan cache.DeltaResponse)
+	subscriptions := make(map[string]stream.Subscription)
+	// Make our initial request as a wildcard to get all resources and make sure the wildcard requesting works as intended
+	for _, typ := range testTypes {
+		watches[typ] = make(chan cache.DeltaResponse, 1)
+		subscriptions[typ] = stream.NewDeltaSubscription(nil, nil, nil, true)
+		_, err := c.CreateDeltaWatch(&discovery.DeltaDiscoveryRequest{
+			Node: &core.Node{
+				Id: "node",
+			},
+			TypeUrl: typ,
+		}, subscriptions[typ], watches[typ])
+		require.NoError(t, err)
+	}
+	require.NoError(t, c.SetSnapshot(context.Background(), key, fixture.snapshotTwoClusters()))
+
+	for _, typ := range testTypes {
+		t.Run(typ, func(t *testing.T) {
+			select {
+			case out := <-watches[typ]:
+				snapshot := fixture.snapshotTwoClusters()
+				assertResourceMapEqual(t, cache.IndexResourcesByName(out.(*cache.RawDeltaResponse).GetRawResources()), snapshot.GetResourcesAndTTL(typ))
+				sub := subscriptions[typ]
+				sub.SetReturnedResources(out.GetNextVersionMap())
+				subscriptions[typ] = sub
+			case <-time.After(time.Second):
+				t.Fatal("failed to receive snapshot response")
+			}
+		})
+	}
+
+	// On re-request we want to use non-wildcard so we can verify the logic path of not requesting
+	// all resources as well as individual resource removals
+	for _, typ := range testTypes {
+		watches[typ] = make(chan cache.DeltaResponse, 1)
+		req := &discovery.DeltaDiscoveryRequest{
+			Node: &core.Node{
+				Id: "node",
+			},
+			TypeUrl: typ,
+			// We must set a nonce to avoid the specific behavior
+			// of returning immediately on wildcard and first request
+			ResponseNonce: "nonce",
+		}
+		sub := subscriptions[typ]
+		if len(namesTwoClusters[typ]) > 0 {
+			sub.UpdateResourceSubscriptions(namesTwoClusters[typ], []string{"*"})
+			req.ResourceNamesSubscribe = names[typ]
+			req.ResourceNamesUnsubscribe = []string{"*"}
+		}
+		_, err := c.CreateDeltaWatch(req, sub, watches[typ])
+		require.NoError(t, err)
+	}
+
+	count := c.GetStatusInfo(key).GetNumDeltaWatches()
+	assert.Lenf(t, testTypes, count, "watches should be created for the latest version, saw %d watches expected %d", count, len(testTypes))
+
+	// set partially-versioned snapshot
+	snapshot2 := fixture.snapshotTwoClusters()
+	cluster := resource.MakeCluster(resource.Ads, clusterName)
+	cluster.ConnectTimeout = durationpb.New(99 * time.Second)
+	snapshot2.Resources[types.Cluster] = cache.NewResources(fixture.version2, []types.Resource{cluster, anotherTestCluster})
+	require.NoError(t, c.SetSnapshot(context.Background(), key, snapshot2))
+	count = c.GetStatusInfo(key).GetNumDeltaWatches()
+	assert.Equalf(t, count, len(testTypes)-2, "watches should be preserved for all but one, got: %d open watches instead of the expected %d open watches", count, len(testTypes)-2)
+
+	// validate response for endpoints
+	select {
+	case out := <-watches[testTypes[1]]:
+		snapshot2 := fixture.snapshotTwoClusters()
+		snapshot2.Resources[types.Cluster] = cache.NewResources(fixture.version2, []types.Resource{cluster})
+		assertResourceMapEqual(t, cache.IndexResourcesByName(out.(*cache.RawDeltaResponse).GetRawResources()), snapshot2.GetResourcesAndTTL(rsrc.ClusterType))
+		sub := subscriptions[testTypes[1]]
+		sub.SetReturnedResources(out.GetNextVersionMap())
+		subscriptions[testTypes[1]] = sub
+	case out := <-watches[testTypes[0]]:
+		assert.Len(t, out.(*cache.RawDeltaResponse).GetRawResources(), 1)
+		assert.Equal(t, out.(*cache.RawDeltaResponse).GetRawResources()[0].Resource, testEndpoint)
+		sub := subscriptions[testTypes[0]]
+		sub.SetReturnedResources(out.GetNextVersionMap())
+		subscriptions[testTypes[0]] = sub
+	case <-time.After(time.Second):
+		t.Fatal("failed to receive snapshot response")
+	}
 }
