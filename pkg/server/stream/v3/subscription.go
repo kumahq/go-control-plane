@@ -21,6 +21,14 @@ type Subscription struct {
 
 	// returnedResources contains the resources acknowledged by the client and the acknowledged versions.
 	returnedResources map[string]string
+
+	// ForcePush indicates if should push the response even when the version is the same
+	// https://www.envoyproxy.io/docs/envoy/latest/api-docs/xds_protocol#resource-warming
+	// This is required in the situation:
+	// 1) There is a Cluster change and control plane responds with CDS
+	// 2) Envoy has a cluster in the warming phase until there is a EDS response, if endpoints haven't changed
+	//    there is no EDS send and changes to the clusters are blocked
+	forcePushResource map[string]bool
 }
 
 // newSubscription initializes a subscription state.
@@ -37,6 +45,7 @@ func newSubscription(emptyRequest, allowLegacyWildcard bool, initialResourceVers
 		allowLegacyWildcard:     allowLegacyWildcard,
 		subscribedResourceNames: map[string]struct{}{},
 		returnedResources:       initialResourceVersions,
+		forcePushResource:       map[string]bool{},
 	}
 
 	if initialResourceVersions == nil {
@@ -174,6 +183,22 @@ func (s Subscription) IsWildcard() bool {
 // and their version
 func (s Subscription) ReturnedResources() map[string]string {
 	return s.returnedResources
+}
+
+func (s Subscription) SetForcePushResource(forcePushResources []string) {
+	for _, resName := range forcePushResources {
+		s.forcePushResource[resName] = true
+	}
+}
+
+func (s Subscription) CleanupForcePushState() {
+	for key := range s.forcePushResource {
+		delete(s.forcePushResource, key)
+	}
+}
+
+func (s Subscription) ShouldForcePushResource(resourceName string) bool {
+	return s.forcePushResource[resourceName]
 }
 
 // SetReturnedResources sets a list of resource versions currently known by the client

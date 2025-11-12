@@ -305,8 +305,14 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 	// of maps are randomized order when ranged over.
 	if cache.ads {
 		info.orderResponseDeltaWatches()
+		forcePushResources := map[types.ResponseType][]string{}
 		for _, key := range info.orderedDeltaWatches {
 			watch := info.deltaWatches[key.ID]
+			responseType := GetResponseType(watch.Request.TypeUrl)
+			if resources, found := forcePushResources[responseType]; found {
+				watch.subscription.SetForcePushResource(resources)
+			}
+
 			res, err := cache.respondDelta(
 				ctx,
 				snapshot,
@@ -321,6 +327,9 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 			// so we don't want to respond or remove any existing resource watches
 			if res != nil {
 				delete(info.deltaWatches, key.ID)
+				if resources, typ, ok := getEdsResourceNamesToForcePush(responseType, res); ok {
+					forcePushResources[typ] = resources
+				}
 			}
 		}
 	} else {
@@ -506,6 +515,15 @@ func (cache *snapshotCache) respond(ctx context.Context, watch ResponseWatch, re
 	}
 }
 
+func getEdsResourceNamesToForcePush(typ types.ResponseType, response *RawDeltaResponse) ([]string, types.ResponseType, bool) {
+	switch typ {
+	case types.Cluster:
+		return GetResourceNames(response.GetRawResources()), types.Endpoint, true
+	default:
+		return []string{}, types.UnknownType, false
+	}
+}
+
 func createResponse(ctx context.Context, request *Request, resources map[string]types.ResourceWithTTL, version string, heartbeat bool) Response {
 	filtered := make([]*cachedResource, 0, len(resources))
 	returnedResources := make(map[string]string, len(resources))
@@ -607,6 +625,8 @@ func (cache *snapshotCache) respondDelta(ctx context.Context, snapshot ResourceS
 			cache.log.Debugf("node: %s, sending delta response for typeURL %s with resources: %v removed resources: %v with wildcard: %t",
 				request.GetNode().GetId(), request.GetTypeUrl(), getCachedResourceNames(resp.resources), resp.removedResources, sub.IsWildcard())
 		}
+		// we don't need to keep state after preparing a response
+		sub.CleanupForcePushState()
 		select {
 		case value <- resp:
 			return resp, nil
