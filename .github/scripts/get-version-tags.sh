@@ -14,10 +14,10 @@ get_latest_kong_tag() {
 
   if [[ "$module" == "root" ]]; then
     pattern="v[0-9]*"
-    git tag --list --merged origin/release "$pattern" | grep -E '(\+kong-|-kong-)' | grep -v '/' | sort -V | tail -n 1
+    git tag --list --merged origin/release "$pattern" | grep -E '(\-kong-|-kong-)' | grep -v '/' | sort -V | tail -n 1
   else
     pattern="${module}/v[0-9]*"
-    git tag --list --merged origin/release "$pattern" | grep -E '(\+kong-|-kong-)' | sort -V | tail -n 1
+    git tag --list --merged origin/release "$pattern" | grep -E '(\-kong-|-kong-)' | sort -V | tail -n 1
   fi
 }
 
@@ -28,17 +28,17 @@ get_upstream_tags() {
 
   if [[ "$module" == "root" ]]; then
     pattern="v[0-9]*"
-    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '+kong-' | grep -v '/' | sort -V
+    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '-kong-' | grep -v '/' | sort -V
   else
     pattern="${module}/v[0-9]*"
-    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '+kong-' | sort -V
+    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '-kong-' | sort -V
   fi
 }
 
 # Function to strip Kong suffix from version tag
 strip_kong_suffix() {
   local tag="$1"
-  tag="${tag%+kong-*}"
+  tag="${tag%-kong-*}"
   tag="${tag%-kong-*}"
   echo "$tag"
 }
@@ -109,7 +109,7 @@ echo "Found ${#new_upstream_tags[@]} new upstream tags"
 # Get root module versions for rebase decision
 # Note: root is the first module in MODULES array (index 0)
 current_root_tag="${latest_versions[0]}"
-main_root_tag=$(git tag --list --merged origin/main 'v[0-9].[0-9]*.[0-9]*' | grep -v '\-kong-' | grep -v '+kong-' | grep -v '/' | sort -V | tail -n 1)
+main_root_tag=$(git tag --list --merged origin/main 'v[0-9].[0-9]*.[0-9]*' | grep -v '\-kong-' | grep -v '-kong-' | grep -v '/' | sort -V | tail -n 1)
 
 echo ""
 echo "Current release root tag: ${current_root_tag:-none}"
@@ -130,7 +130,7 @@ fi
 # Build list of new Kong tags
 new_tags=()
 for tag in "${new_upstream_tags[@]}"; do
-  new_tags+=("${tag}+kong-1")
+  new_tags+=("${tag}-kong-1")
 done
 
 echo ""

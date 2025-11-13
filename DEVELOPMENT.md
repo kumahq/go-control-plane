@@ -29,47 +29,47 @@ Upstream now uses multi-module tagging, creating separate tags for each Go modul
 - `xdsmatcher/v0.13.4` (xdsmatcher module)
 - `ratelimit/v0.1.0` (ratelimit module)
 
-Our sync automation detects all these tags and applies the `+kong-N` suffix to **all of them**, creating:
+Our sync automation detects all these tags and applies the `-kong-N` suffix to **all of them**, creating:
 
-- `v0.13.4+kong-1`
-- `envoy/v1.32.3+kong-1`
-- `contrib/v1.32.3+kong-1`
-- `xdsmatcher/v0.13.4+kong-1`
-- `ratelimit/v0.1.0+kong-1`
+- `v0.13.4-kong-1`
+- `envoy/v1.32.3-kong-1`
+- `contrib/v1.32.3-kong-1`
+- `xdsmatcher/v0.13.4-kong-1`
+- `ratelimit/v0.1.0-kong-1`
 
 ### Manual Releases
 
 If you merge a custom change and want to create a release, you need to tag your commit with **all module tags** using the following pattern:
 
 ```text
-<module-prefix><current-version>+kong-<incremented-number>
+<module-prefix><current-version>-kong-<incremented-number>
 ```
 
 ### Why use `+` instead of `-`?
 
 - Per Semantic Versioning (https://semver.org/), anything after a hyphen (`-`) denotes a pre-release (e.g., `1.2.3-alpha.1`). Many tooling ecosystems interpret pre-releases as being "behind" the final release and will constantly flag that a newer non-pre-release version is available
-- Anything after a plus (`+`) is build metadata. Build metadata does not affect version precedence. By using tags like `vX.Y.Z+kong-N`, we keep the base version identical to upstream and attach our fork-specific identifier without triggering dependency updaters to suggest moving to plain `vX.Y.Z`
+- Anything after a plus (`+`) is build metadata. Build metadata does not affect version precedence. By using tags like `vX.Y.Z-kong-N`, we keep the base version identical to upstream and attach our fork-specific identifier without triggering dependency updaters to suggest moving to plain `vX.Y.Z`
 
 #### Example
 
 The current tags are:
-- `v0.13.1+kong-1`
-- `envoy/v1.32.2+kong-1`
-- `xdsmatcher/v0.13.1+kong-1`
+- `v0.13.1-kong-1`
+- `envoy/v1.32.2-kong-1`
+- `xdsmatcher/v0.13.1-kong-1`
 
 After merging your changes, you want to release a new version. You should tag your commit with **all** the following tags:
 
-- `v0.13.1+kong-2`
-- `envoy/v1.32.2+kong-2`
-- `xdsmatcher/v0.13.1+kong-2`
+- `v0.13.1-kong-2`
+- `envoy/v1.32.2-kong-2`
+- `xdsmatcher/v0.13.1-kong-2`
 - (and any other module tags present)
 
 ```bash
 # Example: Creating all tags for a custom release
-git tag v0.13.1+kong-2
-git tag envoy/v1.32.2+kong-2
-git tag xdsmatcher/v0.13.1+kong-2
-git tag ratelimit/v0.1.0+kong-2
+git tag v0.13.1-kong-2
+git tag envoy/v1.32.2-kong-2
+git tag xdsmatcher/v0.13.1-kong-2
+git tag ratelimit/v0.1.0-kong-2
 git push origin --tags
 ```
 
@@ -83,7 +83,7 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
 
 - **main branch**: Mirrors upstream, synced daily
 - **release branch**: Contains upstream commits + Kong custom commits on top
-- **Kong tags** (e.g., `v0.14.0+kong-1`): Point to the HEAD of release (custom commit), not the upstream commit
+- **Kong tags** (e.g., `v0.14.0-kong-1`): Point to the HEAD of release (custom commit), not the upstream commit
 
 ### Manual Rebase Instructions
 
@@ -117,8 +117,8 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
    Root version changed - will rebase preserving custom commits
 
    New Kong tags to be created:
-     - v0.14.0+kong-1
-     - envoy/v1.36.0+kong-1
+     - v0.14.0-kong-1
+     - envoy/v1.36.0-kong-1
    ```
 
    If you see `"No new upstream tags found"`, no action is needed.
@@ -158,10 +158,10 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
    ```bash
    # Apply all Kong tags from the script output
    # Example:
-   git tag v0.14.0+kong-1
-   git tag envoy/v1.36.0+kong-1
-   git tag contrib/v1.36.0+kong-1
-   git tag xdsmatcher/v0.14.0+kong-1
+   git tag v0.14.0-kong-1
+   git tag envoy/v1.36.0-kong-1
+   git tag contrib/v1.36.0-kong-1
+   git tag xdsmatcher/v0.14.0-kong-1
    ```
 
 8. Push changes to origin
@@ -172,7 +172,7 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
 
 ### Important Notes
 
-- The Kong tags (`+kong-1`) always point to **your custom commit (HEAD of release)**, not the upstream commit
+- The Kong tags (`-kong-1`) always point to **your custom commit (HEAD of release)**, not the upstream commit
 - Custom commits are always **on top** of the upstream base
 - When upstream releases a new version, we rebase your commits to keep them on top
 - All module tags (root, envoy, contrib, etc.) are created together on the same commit (HEAD)
