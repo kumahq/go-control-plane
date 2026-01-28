@@ -2265,6 +2265,40 @@ func (m *RouteMatch) validate(all bool) error {
 
 	}
 
+	for idx, item := range m.GetCookies() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("Cookies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("Cookies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RouteMatchValidationError{
+					field:  fmt.Sprintf("Cookies[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if all {
 		switch v := interface{}(m.GetGrpc()).(type) {
 		case interface{ ValidateAll() error }:
@@ -5431,6 +5465,10 @@ func (m *Tracing) validate(all bool) error {
 
 	}
 
+	// no validation rules for Operation
+
+	// no validation rules for UpstreamOperation
+
 	if len(errors) > 0 {
 		return TracingMultiError(errors)
 	}
@@ -5796,6 +5834,8 @@ func (m *RateLimit) validate(all bool) error {
 	}
 
 	// no validation rules for ApplyOnStreamDone
+
+	// no validation rules for XRatelimitOption
 
 	if len(errors) > 0 {
 		return RateLimitMultiError(errors)
@@ -6415,6 +6455,170 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = QueryParameterMatcherValidationError{}
+
+// Validate checks the field values on CookieMatcher with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *CookieMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CookieMatcher with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in CookieMatcherMultiError, or
+// nil if none found.
+func (m *CookieMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CookieMatcher) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetName()) < 1 {
+		err := CookieMatcherValidationError{
+			field:  "Name",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(m.GetName()) > 1024 {
+		err := CookieMatcherValidationError{
+			field:  "Name",
+			reason: "value length must be at most 1024 bytes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if m.GetStringMatch() == nil {
+		err := CookieMatcherValidationError{
+			field:  "StringMatch",
+			reason: "value is required",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetStringMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CookieMatcherValidationError{
+					field:  "StringMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CookieMatcherValidationError{
+					field:  "StringMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetStringMatch()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return CookieMatcherValidationError{
+				field:  "StringMatch",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for InvertMatch
+
+	if len(errors) > 0 {
+		return CookieMatcherMultiError(errors)
+	}
+
+	return nil
+}
+
+// CookieMatcherMultiError is an error wrapping multiple validation errors
+// returned by CookieMatcher.ValidateAll() if the designated constraints
+// aren't met.
+type CookieMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CookieMatcherMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CookieMatcherMultiError) AllErrors() []error { return m }
+
+// CookieMatcherValidationError is the validation error returned by
+// CookieMatcher.Validate if the designated constraints aren't met.
+type CookieMatcherValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CookieMatcherValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CookieMatcherValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CookieMatcherValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CookieMatcherValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CookieMatcherValidationError) ErrorName() string { return "CookieMatcherValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CookieMatcherValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCookieMatcher.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CookieMatcherValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CookieMatcherValidationError{}
 
 // Validate checks the field values on InternalRedirectPolicy with the rules
 // defined in the proto definition for this message. If any rules are
@@ -11904,6 +12108,8 @@ func (m *RateLimit_Action_GenericKey) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	// no validation rules for DefaultValue
+
 	// no validation rules for DescriptorKey
 
 	if len(errors) > 0 {
@@ -12010,8 +12216,6 @@ func (m *RateLimit_Action_HeaderValueMatch) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for DescriptorKey
-
 	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		err := RateLimit_Action_HeaderValueMatchValidationError{
 			field:  "DescriptorValue",
@@ -12022,6 +12226,10 @@ func (m *RateLimit_Action_HeaderValueMatch) validate(all bool) error {
 		}
 		errors = append(errors, err)
 	}
+
+	// no validation rules for DefaultValue
+
+	// no validation rules for DescriptorKey
 
 	if all {
 		switch v := interface{}(m.GetExpectMatch()).(type) {
@@ -12529,8 +12737,6 @@ func (m *RateLimit_Action_QueryParameterValueMatch) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for DescriptorKey
-
 	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		err := RateLimit_Action_QueryParameterValueMatchValidationError{
 			field:  "DescriptorValue",
@@ -12541,6 +12747,10 @@ func (m *RateLimit_Action_QueryParameterValueMatch) validate(all bool) error {
 		}
 		errors = append(errors, err)
 	}
+
+	// no validation rules for DefaultValue
+
+	// no validation rules for DescriptorKey
 
 	if all {
 		switch v := interface{}(m.GetExpectMatch()).(type) {

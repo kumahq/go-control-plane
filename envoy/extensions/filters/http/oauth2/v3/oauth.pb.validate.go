@@ -69,6 +69,19 @@ func (m *CookieConfig) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	if !_CookieConfig_Path_Pattern.MatchString(m.GetPath()) {
+		err := CookieConfigValidationError{
+			field:  "Path",
+			reason: "value does not match regex pattern \"^$|^/[^\\\\x00-\\\\x1f\\\\x7f \\\",;<>\\\\\\\\]*$\"",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	// no validation rules for Partitioned
+
 	if len(errors) > 0 {
 		return CookieConfigMultiError(errors)
 	}
@@ -145,6 +158,8 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = CookieConfigValidationError{}
+
+var _CookieConfig_Path_Pattern = regexp.MustCompile("^$|^/[^\\x00-\\x1f\\x7f \",;<>\\\\]*$")
 
 // Validate checks the field values on CookieConfigs with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
@@ -551,7 +566,16 @@ func (m *OAuth2Credentials) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for CookieDomain
+	if !_OAuth2Credentials_CookieDomain_Pattern.MatchString(m.GetCookieDomain()) {
+		err := OAuth2CredentialsValidationError{
+			field:  "CookieDomain",
+			reason: "value does not match regex pattern \"^$|^[^\\\\x00-\\\\x1f\\\\x7f \\\",;<>\\\\\\\\]+$\"",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
 
 	oneofTokenFormationPresent := false
 	switch v := m.TokenFormation.(type) {
@@ -701,6 +725,8 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = OAuth2CredentialsValidationError{}
+
+var _OAuth2Credentials_CookieDomain_Pattern = regexp.MustCompile("^$|^[^\\x00-\\x1f\\x7f \",;<>\\\\]+$")
 
 // Validate checks the field values on OAuth2Config with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
