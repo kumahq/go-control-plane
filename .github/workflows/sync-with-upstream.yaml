@@ -86,7 +86,7 @@ jobs:
         # Apply all module tags to HEAD (which is the custom commit on top of upstream)
         echo '${{ steps.detect-tags.outputs.new_tags }}' | jq -r '.[]' | while read -r tag; do
           echo "Creating tag: $tag"
-          # git tag "$tag"
+          git tag "$tag"
         done
 
         git push origin release --tags --force-with-lease

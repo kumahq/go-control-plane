@@ -109,26 +109,37 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
 
    **Example output:**
 
-   ```bash
+   ```
+   === Detecting new upstream tags ===
+   Finding latest Kong tags per module...
+     root: v0.13.4
+     envoy: envoy/v1.35.0
+     ...
+
+   Checking for new upstream tags...
+     New tag in root: v0.14.0
+     New tag in envoy: envoy/v1.36.0
+
    Current release root tag: v0.13.4
    Upstream root tag: v0.14.0
+   Root version changed - will rebase preserving custom commits
    Current base commit: 2d07f5a1
    Found 2 custom Kong commit(s) on release branch
-   Root version changed - will rebase preserving custom commits
 
    New Kong tags to be created:
      - v0.14.0-kong-1
      - envoy/v1.36.0-kong-1
+
+   === Detection complete ===
    ```
 
    If you see `"No new upstream tags found"`, no action is needed.
 
-4. Identify the base commit (the last upstream commit before Kong changes)
+4. Use the base commit and new tag from the script output
 
    ```bash
-   # This is shown in the script output as "Current base commit"
-   BASE_COMMIT="2d07f5a1"      # From script output
-   NEW_TAG="v0.14.0"           # The new upstream tag from output
+   BASE_COMMIT="2d07f5a1"      # "Current base commit" from script output
+   NEW_TAG="v0.14.0"           # "Upstream root tag" from script output
    ```
 
 5. Rebase Kong custom commits onto the new upstream tag

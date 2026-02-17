@@ -39,7 +39,6 @@ get_upstream_tags() {
 strip_kong_suffix() {
   local tag="$1"
   tag="${tag%-kong-*}"
-  tag="${tag%-kong-*}"
   echo "$tag"
 }
 
@@ -127,6 +126,19 @@ else
   echo "Root version unchanged - will only add new tags"
 fi
 
+# Find base commit for rebase (the upstream commit that the current release is based on)
+base_commit=""
+if [[ "$needs_rebase" == "true" && -n "$current_root_tag" ]]; then
+  base_commit=$(git rev-list --ancestry-path "${current_root_tag}..origin/release" | tail -n 1)
+  if [[ -n "$base_commit" ]]; then
+    # base_commit is the first commit after the upstream tag, we need its parent
+    base_commit=$(git rev-parse "${base_commit}^")
+  fi
+  echo "Current base commit: $base_commit"
+  custom_commits=$(git rev-list "${base_commit}..origin/release" --count)
+  echo "Found $custom_commits custom Kong commit(s) on release branch"
+fi
+
 # Build list of new Kong tags
 new_tags=()
 for tag in "${new_upstream_tags[@]}"; do
@@ -145,6 +157,7 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "needs_rebase=$needs_rebase" >> "$GITHUB_OUTPUT"
   echo "released_tag=$current_root_tag" >> "$GITHUB_OUTPUT"
   echo "main_tag=$main_root_tag" >> "$GITHUB_OUTPUT"
+  echo "base_commit=$base_commit" >> "$GITHUB_OUTPUT"
 
   # Export all new tags as a JSON array (compact format for GitHub Actions)
   new_tags_json=$(printf '%s\n' "${new_tags[@]}" | jq -R . | jq -sc .)
