@@ -50,22 +50,26 @@ jobs:
       if: steps.sync.outputs.has_new_commits == 'false'
       run: echo "There were no new commits."
     - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
-      if: steps.sync.outputs.has_new_commits == 'true'
       with:
         fetch-depth: 0
-    - name: Get new version tag
-      id: new-version-tag
-      if: steps.sync.outputs.has_new_commits == 'true'
+    - name: Detect version tags and Kong versions
+      id: detect-tags
       shell: bash
       run: ".github/scripts/get-version-tags.sh"
-    - name: Print tags
-      if: steps.sync.outputs.has_new_commits == 'true'
+    - name: Print detection results
+      if: steps.detect-tags.outputs.needs_release == 'true'
       run: |
-        echo "Current fork tag: ${{ steps.new-version-tag.outputs.released_tag }}"
-        echo "Newest upstream tag: ${{ steps.new-version-tag.outputs.main_tag }}"
-        echo "New fork release tag: ${{ steps.new-version-tag.outputs.new_tag }}"
-    - name: Release new version
-      if: steps.new-version-tag.outputs.released_tag != steps.new-version-tag.outputs.main_tag
+        echo "Current fork tag: ${{ steps.detect-tags.outputs.released_tag }}"
+        echo "Newest upstream tag: ${{ steps.detect-tags.outputs.main_tag }}"
+        echo "Needs rebase: ${{ steps.detect-tags.outputs.needs_rebase }}"
+        echo ""
+        echo "New tags to be created:"
+        echo '${{ steps.detect-tags.outputs.new_tags }}' | jq -r '.[]'
+    - name: No action needed
+      if: steps.detect-tags.outputs.needs_release != 'true'
+      run: echo "All upstream tags already have Kong versions. No action needed."
+    - name: Release new version with rebase
+      if: steps.detect-tags.outputs.needs_release == 'true' && steps.detect-tags.outputs.needs_rebase == 'true'
       run: |
         git remote -v
         git remote set-url origin https://${{ steps.github-app-token.outputs.token }}@github.com/kumahq/go-control-plane.git
@@ -73,6 +77,16 @@ jobs:
         git config user.email "${GH_EMAIL}"
         git checkout release
         git pull
-        git rebase --onto ${{ steps.new-version-tag.outputs.main_tag }} ${{ steps.new-version-tag.outputs.released_tag }} release
-        git tag ${{ steps.new-version-tag.outputs.new_tag }}
+
+        # Rebase Kong custom commits onto new upstream tag
+        # This keeps custom commits on top of the new upstream base
+        echo "Rebasing release branch onto new upstream tag: ${{ steps.detect-tags.outputs.main_tag }}"
+        git rebase --onto ${{ steps.detect-tags.outputs.main_tag }} ${{ steps.detect-tags.outputs.base_commit }} release
+
+        # Apply all module tags to HEAD (which is the custom commit on top of upstream)
+        echo '${{ steps.detect-tags.outputs.new_tags }}' | jq -r '.[]' | while read -r tag; do
+          echo "Creating tag: $tag"
+          git tag "$tag"
+        done
+
         git push origin release --tags --force-with-lease
