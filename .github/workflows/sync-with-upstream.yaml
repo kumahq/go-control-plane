@@ -59,34 +59,36 @@ jobs:
     - name: Print detection results
       if: steps.detect-tags.outputs.needs_release == 'true'
       run: |
-        echo "Current fork tag: ${{ steps.detect-tags.outputs.released_tag }}"
-        echo "Newest upstream tag: ${{ steps.detect-tags.outputs.main_tag }}"
-        echo "Needs rebase: ${{ steps.detect-tags.outputs.needs_rebase }}"
+        echo "Rebase target: ${{ steps.detect-tags.outputs.rebase_target }}"
+        echo "Base commit: ${{ steps.detect-tags.outputs.base_commit }}"
         echo ""
         echo "New tags to be created:"
         echo '${{ steps.detect-tags.outputs.new_tags }}' | jq -r '.[]'
     - name: No action needed
       if: steps.detect-tags.outputs.needs_release != 'true'
       run: echo "All upstream tags already have Kong versions. No action needed."
-    - name: Release new version with rebase
-      if: steps.detect-tags.outputs.needs_release == 'true' && steps.detect-tags.outputs.needs_rebase == 'true'
+    - name: Release new version
+      if: steps.detect-tags.outputs.needs_release == 'true'
       run: |
-        git remote -v
         git remote set-url origin https://${{ steps.github-app-token.outputs.token }}@github.com/kumahq/go-control-plane.git
         git config user.name "${GH_USER}"
         git config user.email "${GH_EMAIL}"
         git checkout release
         git pull
 
-        # Rebase Kong custom commits onto new upstream tag
-        # This keeps custom commits on top of the new upstream base
-        echo "Rebasing release branch onto new upstream tag: ${{ steps.detect-tags.outputs.main_tag }}"
-        git rebase --onto ${{ steps.detect-tags.outputs.main_tag }} ${{ steps.detect-tags.outputs.base_commit }} release
+        # Rebase Kong custom commits onto the latest upstream tag commit
+        # This brings upstream changes up to the tag into release, with custom commits on top
+        echo "Rebasing release onto ${{ steps.detect-tags.outputs.rebase_target }}"
+        git rebase --onto ${{ steps.detect-tags.outputs.rebase_target }} ${{ steps.detect-tags.outputs.base_commit }} release
 
-        # Apply all module tags to HEAD (which is the custom commit on top of upstream)
+        # Apply all module tags to HEAD (custom commits on top of upstream)
         echo '${{ steps.detect-tags.outputs.new_tags }}' | jq -r '.[]' | while read -r tag; do
-          echo "Creating tag: $tag"
-          git tag "$tag"
+          if git tag -l "$tag" | grep -q .; then
+            echo "Skipping existing tag: $tag"
+          else
+            echo "Creating tag: $tag"
+            git tag "$tag"
+          fi
         done
 
         git push origin release --tags --force-with-lease
