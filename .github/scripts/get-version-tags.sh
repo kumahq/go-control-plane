@@ -14,10 +14,10 @@ get_latest_kong_tag() {
 
   if [[ "$module" == "root" ]]; then
     pattern="v[0-9]*"
-    git tag --list --merged origin/release "$pattern" | grep -E '(\-kong-|-kong-)' | grep -v '/' | sort -V | tail -n 1
+    git tag --list "$pattern" | grep -E -- '[-+]kong-' | grep -v '/' | sort -V | tail -n 1
   else
     pattern="${module}/v[0-9]*"
-    git tag --list --merged origin/release "$pattern" | grep -E '(\-kong-|-kong-)' | sort -V | tail -n 1
+    git tag --list "$pattern" | grep -E -- '[-+]kong-' | sort -V | tail -n 1
   fi
 }
 
@@ -28,10 +28,10 @@ get_upstream_tags() {
 
   if [[ "$module" == "root" ]]; then
     pattern="v[0-9]*"
-    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '-kong-' | grep -v '/' | sort -V
+    git tag --list --merged origin/main "$pattern" | grep -Ev -- '[-+]kong-' | grep -v '/' | sort -V
   else
     pattern="${module}/v[0-9]*"
-    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '-kong-' | sort -V
+    git tag --list --merged origin/main "$pattern" | grep -Ev -- '[-+]kong-' | sort -V
   fi
 }
 
@@ -105,39 +105,30 @@ fi
 echo ""
 echo "Found ${#new_upstream_tags[@]} new upstream tags"
 
-# Get root module versions for rebase decision
-# Note: root is the first module in MODULES array (index 0)
-current_root_tag="${latest_versions[0]}"
-main_root_tag=$(git tag --list --merged origin/main 'v[0-9].[0-9]*.[0-9]*' | grep -v '\-kong-' | grep -v '-kong-' | grep -v '/' | sort -V | tail -n 1)
-
+# Find the rebase target: the latest commit among all new upstream tags
+# This ensures release includes upstream commits up to the newest tag, not beyond
 echo ""
-echo "Current release root tag: ${current_root_tag:-none}"
-echo "Upstream root tag: $main_root_tag"
-
-# Determine if we need to rebase (root version changed)
-needs_rebase=false
-if [[ -z "$current_root_tag" ]]; then
-  needs_rebase=true
-  echo "No existing release - will need to rebase"
-elif [[ "$main_root_tag" != "$current_root_tag" ]]; then
-  needs_rebase=true
-  echo "Root version changed - will rebase preserving custom commits"
-else
-  echo "Root version unchanged - will only add new tags"
-fi
-
-# Find base commit for rebase (the upstream commit that the current release is based on)
-base_commit=""
-if [[ "$needs_rebase" == "true" && -n "$current_root_tag" ]]; then
-  base_commit=$(git rev-list --ancestry-path "${current_root_tag}..origin/release" | tail -n 1)
-  if [[ -n "$base_commit" ]]; then
-    # base_commit is the first commit after the upstream tag, we need its parent
-    base_commit=$(git rev-parse "${base_commit}^")
+echo "Finding rebase target from new upstream tags..."
+rebase_target=""
+for tag in "${new_upstream_tags[@]}"; do
+  tag_commit=$(git rev-parse "$tag")
+  if [[ -z "$rebase_target" ]]; then
+    rebase_target="$tag_commit"
+  else
+    # Pick the commit that is ahead (closer to main HEAD)
+    if git merge-base --is-ancestor "$rebase_target" "$tag_commit"; then
+      rebase_target="$tag_commit"
+    fi
   fi
-  echo "Current base commit: $base_commit"
-  custom_commits=$(git rev-list "${base_commit}..origin/release" --count)
-  echo "Found $custom_commits custom Kong commit(s) on release branch"
-fi
+done
+echo "Rebase target: $(git rev-parse --short "$rebase_target") (from tag: $(git describe --tags --exact-match "$rebase_target" 2>/dev/null || echo 'multiple tags'))"
+
+# Find the base commit where release diverges from main (last shared upstream commit)
+base_commit=$(git merge-base origin/main origin/release)
+echo "Base commit: $(git rev-parse --short "$base_commit")"
+
+custom_commits=$(git rev-list "${base_commit}..origin/release" --count)
+echo "Found $custom_commits custom Kong commit(s) on release branch"
 
 # Build list of new Kong tags
 new_tags=()
@@ -154,9 +145,7 @@ done
 # Output for GitHub Actions
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "needs_release=true" >> "$GITHUB_OUTPUT"
-  echo "needs_rebase=$needs_rebase" >> "$GITHUB_OUTPUT"
-  echo "released_tag=$current_root_tag" >> "$GITHUB_OUTPUT"
-  echo "main_tag=$main_root_tag" >> "$GITHUB_OUTPUT"
+  echo "rebase_target=$rebase_target" >> "$GITHUB_OUTPUT"
   echo "base_commit=$base_commit" >> "$GITHUB_OUTPUT"
 
   # Export all new tags as a JSON array (compact format for GitHub Actions)
