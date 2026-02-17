@@ -1,47 +1,168 @@
 #!/bin/bash
 
-current_tag=$(git tag --list 'v[0-9].[0-9]*.[0-9]*' --merged origin/release --sort=-creatordate | head -n 1)
-main_tag=$(git tag --list 'v[0-9].[0-9]*.[0-9]*' --merged origin/main --sort=-creatordate | head -n 1)
+set -e
 
-# Remove the prefix `v` and `+kong-*` suffix for comparison
-released_tag="${current_tag%+kong-*}"
-currentVersion="${released_tag#v}"
+echo "=== Detecting new upstream tags ==="
 
-# The main branch won't have +kong-* suffix
-newVersion="${main_tag#v}"
+# Define all modules to process
+MODULES=("root" "envoy" "contrib" "ratelimit" "xdsmatcher")
 
-echo "Current release tag prefix: $released_tag"
-echo "Upstream tag: $main_tag"
-new_tag="${main_tag}+kong-1"
-if [[ $current_tag != $new_tag ]]; then
-  echo "New tag: $new_tag"
-else
-  echo "Tags are equal, no need to release"
-  exit 0
-fi
+# Function to get latest Kong tag for a module
+get_latest_kong_tag() {
+  local module="$1"
+  local pattern
 
-# Convert versions to arrays
-IFS='.' read -r -a currentParts <<< "$currentVersion"
-IFS='.' read -r -a newParts <<< "$newVersion"
+  if [[ "$module" == "root" ]]; then
+    pattern="v[0-9]*"
+    git tag --list --merged origin/release "$pattern" | grep -E '(\-kong-|-kong-)' | grep -v '/' | sort -V | tail -n 1
+  else
+    pattern="${module}/v[0-9]*"
+    git tag --list --merged origin/release "$pattern" | grep -E '(\-kong-|-kong-)' | sort -V | tail -n 1
+  fi
+}
 
-echo "released_tag=$released_tag" >> $GITHUB_OUTPUT
-echo "main_tag=$main_tag" >> $GITHUB_OUTPUT
+# Function to get upstream tags for a module
+get_upstream_tags() {
+  local module="$1"
+  local pattern
 
-echo "Current base tag: $currentVersion"
-echo "Upstream tag: $newVersion"
+  if [[ "$module" == "root" ]]; then
+    pattern="v[0-9]*"
+    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '-kong-' | grep -v '/' | sort -V
+  else
+    pattern="${module}/v[0-9]*"
+    git tag --list --merged origin/main "$pattern" | grep -v '\-kong-' | grep -v '-kong-' | sort -V
+  fi
+}
 
-# Compare each part
-for i in 0 1 2; do
-  if [[ ${newParts[i]:-0} -gt ${currentParts[i]:-0} ]]; then
-    echo "The new tag is higher."
-    echo "New version tag: $new_tag"
-    echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
-    exit 0
-  elif [[ ${newParts[i]:-0} -lt ${currentParts[i]:-0} ]]; then
-    echo "The current tag is higher. That shouldn't be that case, please fix tagging."
-    exit 1
+# Function to strip Kong suffix from version tag
+strip_kong_suffix() {
+  local tag="$1"
+  tag="${tag%-kong-*}"
+  echo "$tag"
+}
+
+# Function to process new upstream tags for a module
+process_module_tags() {
+  local module="$1"
+  local latest_version="$2"
+
+  if [[ -n "$latest_version" ]]; then
+    # Find tags newer than the latest Kong version
+    local found_latest=false
+    while IFS= read -r tag; do
+      if [[ "$found_latest" == "true" ]]; then
+        new_upstream_tags+=("$tag")
+        echo "  New tag in $module: $tag"
+      elif [[ "$tag" == "$latest_version" ]]; then
+        found_latest=true
+      fi
+    done < <(get_upstream_tags "$module")
+  else
+    # No existing Kong tag, get the latest upstream tag
+    local latest_upstream=$(get_upstream_tags "$module" | tail -n 1)
+    if [[ -n "$latest_upstream" ]]; then
+      new_upstream_tags+=("$latest_upstream")
+      echo "  First tag for $module: $latest_upstream"
+    fi
+  fi
+}
+
+# Find latest Kong tags per module
+echo "Finding latest Kong tags per module..."
+latest_versions=()
+for module in "${MODULES[@]}"; do
+  kong_tag=$(get_latest_kong_tag "$module")
+  if [[ -n "$kong_tag" ]]; then
+    stripped_version=$(strip_kong_suffix "$kong_tag")
+    latest_versions+=("$stripped_version")
+    echo "  $module: $stripped_version"
+  else
+    latest_versions+=("")
+    echo "  $module: none"
   fi
 done
 
-echo "The tags are equal."
-exit 0
+# Find new upstream tags for each module
+new_upstream_tags=()
+
+echo ""
+echo "Checking for new upstream tags..."
+
+for i in "${!MODULES[@]}"; do
+  process_module_tags "${MODULES[$i]}" "${latest_versions[$i]}"
+done
+
+if [[ ${#new_upstream_tags[@]} -eq 0 ]]; then
+  echo ""
+  echo "No new upstream tags found. No action needed."
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    echo "needs_release=false" >> "$GITHUB_OUTPUT"
+  fi
+  exit 0
+fi
+
+echo ""
+echo "Found ${#new_upstream_tags[@]} new upstream tags"
+
+# Get root module versions for rebase decision
+# Note: root is the first module in MODULES array (index 0)
+current_root_tag="${latest_versions[0]}"
+main_root_tag=$(git tag --list --merged origin/main 'v[0-9].[0-9]*.[0-9]*' | grep -v '\-kong-' | grep -v '-kong-' | grep -v '/' | sort -V | tail -n 1)
+
+echo ""
+echo "Current release root tag: ${current_root_tag:-none}"
+echo "Upstream root tag: $main_root_tag"
+
+# Determine if we need to rebase (root version changed)
+needs_rebase=false
+if [[ -z "$current_root_tag" ]]; then
+  needs_rebase=true
+  echo "No existing release - will need to rebase"
+elif [[ "$main_root_tag" != "$current_root_tag" ]]; then
+  needs_rebase=true
+  echo "Root version changed - will rebase preserving custom commits"
+else
+  echo "Root version unchanged - will only add new tags"
+fi
+
+# Find base commit for rebase (the upstream commit that the current release is based on)
+base_commit=""
+if [[ "$needs_rebase" == "true" && -n "$current_root_tag" ]]; then
+  base_commit=$(git rev-list --ancestry-path "${current_root_tag}..origin/release" | tail -n 1)
+  if [[ -n "$base_commit" ]]; then
+    # base_commit is the first commit after the upstream tag, we need its parent
+    base_commit=$(git rev-parse "${base_commit}^")
+  fi
+  echo "Current base commit: $base_commit"
+  custom_commits=$(git rev-list "${base_commit}..origin/release" --count)
+  echo "Found $custom_commits custom Kong commit(s) on release branch"
+fi
+
+# Build list of new Kong tags
+new_tags=()
+for tag in "${new_upstream_tags[@]}"; do
+  new_tags+=("${tag}-kong-1")
+done
+
+echo ""
+echo "New Kong tags to be created:"
+for tag in "${new_tags[@]}"; do
+  echo "  - $tag"
+done
+
+# Output for GitHub Actions
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  echo "needs_release=true" >> "$GITHUB_OUTPUT"
+  echo "needs_rebase=$needs_rebase" >> "$GITHUB_OUTPUT"
+  echo "released_tag=$current_root_tag" >> "$GITHUB_OUTPUT"
+  echo "main_tag=$main_root_tag" >> "$GITHUB_OUTPUT"
+  echo "base_commit=$base_commit" >> "$GITHUB_OUTPUT"
+
+  # Export all new tags as a JSON array (compact format for GitHub Actions)
+  new_tags_json=$(printf '%s\n' "${new_tags[@]}" | jq -R . | jq -sc .)
+  echo "new_tags=$new_tags_json" >> "$GITHUB_OUTPUT"
+fi
+
+echo ""
+echo "=== Detection complete ==="
