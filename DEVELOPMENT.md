@@ -101,7 +101,7 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
    git clean -fd
    ```
 
-3. Detect new tags and check if rebase is needed
+3. Detect new tags
 
    ```bash
    ./.github/scripts/get-version-tags.sh
@@ -120,10 +120,9 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
      New tag in root: v0.14.0
      New tag in envoy: envoy/v1.36.0
 
-   Current release root tag: v0.13.4
-   Upstream root tag: v0.14.0
-   Root version changed - will rebase preserving custom commits
-   Current base commit: 2d07f5a1
+   Finding rebase target from new upstream tags...
+   Rebase target: abc1234 (from tag: v0.14.0)
+   Base commit: def5678
    Found 2 custom Kong commit(s) on release branch
 
    New Kong tags to be created:
@@ -135,23 +134,23 @@ The automatic release job rebases Kong custom commits on top of new upstream ver
 
    If you see `"No new upstream tags found"`, no action is needed.
 
-4. Use the base commit and new tag from the script output
+4. Use the rebase target and base commit from the script output
 
    ```bash
-   BASE_COMMIT="2d07f5a1"      # "Current base commit" from script output
-   NEW_TAG="v0.14.0"           # "Upstream root tag" from script output
+   REBASE_TARGET="abc1234"     # "Rebase target" from script output
+   BASE_COMMIT="def5678"       # "Base commit" from script output
    ```
 
-5. Rebase Kong custom commits onto the new upstream tag
+5. Rebase Kong custom commits onto the latest upstream tag
 
    ```bash
-   git rebase --onto "$NEW_TAG" "$BASE_COMMIT" release
+   git rebase --onto "$REBASE_TARGET" "$BASE_COMMIT" release
    ```
 
    This command:
    - Takes all commits after `BASE_COMMIT` on the release branch (your custom Kong commits)
-   - Rebases them onto `NEW_TAG` (the new upstream version)
-   - Your custom commits remain on top
+   - Rebases them onto `REBASE_TARGET` (the commit of the latest new upstream tag)
+   - Upstream changes up to the tag are included, custom commits remain on top
 
 6. If you encounter conflicts:
 
